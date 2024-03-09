@@ -1,12 +1,11 @@
-var express = require("express");
-var path = require("path");
-var cookieParser = require("cookie-parser");
-var logger = require("morgan");
+const express = require("express");
+const path = require("path");
+const cookieParser = require("cookie-parser");
+const logger = require("morgan");
+const indexRouter = require("./routes/index");
+const filloutRouter = require("./routes/fill-out");
 
-var indexRouter = require("./routes/index");
-var filloutRouter = require("./routes/fill-out");
-
-var app = express();
+const app = express();
 
 app.use(logger("dev"));
 app.use(express.json());
@@ -15,6 +14,6 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/", indexRouter);
-app.use("/fillout", filloutRouter);
+app.use("/v1/api", filloutRouter);
 
 module.exports = app;
