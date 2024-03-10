@@ -13,12 +13,16 @@ router.get("/forms", async function (req, res, next) {
       Authorization: `Bearer ${apiKey}`,
     },
   });
+
   let data = await response.json();
   res.json(data);
 });
 
 router.get("/forms/:formId", async function (req, res, next) {
   const formId = req.params.formId;
+  if (!formId) {
+    return res.status(400).send("formId is required");
+  }
   const response = await fetch(
     `https://api.fillout.com/v1/api/forms/${formId}`,
     {
@@ -28,7 +32,13 @@ router.get("/forms/:formId", async function (req, res, next) {
       },
     }
   );
+
   let data = await response.json();
+
+  if (data.error) {
+    return res.status(data.statusCode).json(data);
+  }
+
   res.json(data);
 });
 
@@ -62,6 +72,10 @@ router.get("/forms/:formId/submissions", async function (req, res, next) {
     }
   );
   let data = await response.json();
+  if (!data.responses) {
+    return res.status(data.statusCode).json(data);
+  }
+
   res.json(data);
 });
 
