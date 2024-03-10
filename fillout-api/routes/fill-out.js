@@ -15,7 +15,6 @@ router.get("/forms", async function (req, res, next) {
   });
 
   let data = await response.json();
-  data = { toma: "are you a tomato?" };
   res.json(data);
 });
 
