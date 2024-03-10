@@ -48,6 +48,12 @@ router.get("/forms/:formId/submissions", async function (req, res) {
     return res.status(400).send("formId is required");
   }
   const filters = req.query;
+  if (filters.limit) {
+    filters.limit = +filters.limit;
+  }
+  if (filters.offset) {
+    filters.offset = +filters.offset;
+  }
 
   const validate = ajv.compile(submission_schema);
   const valid_schema = validate(filters);
