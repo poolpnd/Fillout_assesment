@@ -52,9 +52,11 @@ router.get("/forms/:formId/submissions", async function (req, res, next) {
 
 router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
   const formId = req.params.formId;
-  if (!formId) return res.status(400).send("formId is required");
+  if (!formId) {
+    return res.status(400).send("formId is required");
+  }
   const filters = req.query;
-  var schema = {
+  const schema = {
     properties: {
       limit: {
         type: "integer",
@@ -85,16 +87,52 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
     additionalProperties: true,
   };
 
+  const filter_schema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+        },
+        condition: {
+          type: "string",
+          enum: ["equals", "does_not_equal", "greater_than", "less_than"],
+        },
+        value: {
+          type: ["integer", "string"],
+        },
+      },
+      required: ["id", "condition", "value"],
+    },
+    additionalProperties: false,
+  };
+
+  const queryParams = {
+    ...req.query, // Assuming req.query contains the query parameters from the URL
+    limit: req.query.limit ? parseInt(req.query.limit) : undefined,
+    offset: req.query.offset ? parseInt(req.query.offset) : undefined,
+  };
+
   const validate = ajv.compile(schema);
-  const valid = validate(filters);
-  if (!valid) {
+  const valid_schema = validate(queryParams);
+  if (!valid_schema) {
     return res.status(400).send(validate.errors);
   }
 
   const res_filters = filters.responseFilter
     ? JSON.parse(filters.responseFilter)
     : [];
-  delete filters.responseFilter;
+
+  if (res_filters.length > 0) {
+    const validate_res = ajv.compile(filter_schema);
+    const valid_res_filter = validate_res(res_filters);
+    if (!valid_res_filter) {
+      return res.status(400).json(validate_res.errors);
+    }
+    delete filters.responseFilter;
+  }
+
   const response = await fetch(
     `https://api.fillout.com/v1/api/forms/${formId}/submissions?${new URLSearchParams(
       filters
@@ -106,32 +144,61 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
       },
     }
   );
+
   let data = await response.json();
   if (!data.responses) {
     return res.status(data.statusCode).json(data);
   }
 
   if (res_filters.length > 0) {
-    console.log(res_filters);
-    if (res_filters?.condition === "equals") {
-      data.responses.map((sub) =>
-        sub.questions.filter(({ id }) => res_filters.value === id)
-      );
-    } else if (res_filters?.condition === "does_not_equal") {
-      data.responses.map((sub) =>
-        sub.questions.filter(({ id }) => res_filters.value !== id)
-      );
-    } else if (res_filters?.condition === "greater_than") {
-      data.responses.map((sub) =>
-        sub.questions.filter(({ id }) => res_filters.value > id)
-      );
-    } else if (res_filters?.condition === "less_than") {
-      data.responses.map((sub) =>
-        sub.questions.filter(({ id }) => res_filters.value < id)
-      );
-    }
+    data = filterResponses(data, res_filters);
   }
   return res.json(data);
 });
 
 module.exports = router;
+
+const filterResponses = (data, conditions) => {
+  // Filter responses based on conditions
+  const filteredResponses = data.responses.filter((response) => {
+    return conditions.every((cond) => {
+      const { id, value, condition } = cond;
+      const question = response.questions.find((q) => q.id === id);
+
+      if (!question) return false; // If question not found, submission doesn't meet condition
+
+      // Apply conditions based on the operator
+      switch (condition) {
+        case "equals":
+          return question.value === value;
+        case "does_not_equal":
+          return question.value !== value;
+        case "greater_than":
+          // Compare as ISO datetime if value is a string, otherwise as number
+          const questionValueGT = isNaN(Date.parse(question.value))
+            ? parseFloat(question.value)
+            : new Date(question.value);
+          const conditionValueGT = isNaN(Date.parse(value))
+            ? parseFloat(value)
+            : new Date(value);
+          return questionValueGT > conditionValueGT;
+        case "less_than":
+          // Compare as ISO datetime if value is a string, otherwise as number
+          const questionValueLT = isNaN(Date.parse(question.value))
+            ? parseFloat(question.value)
+            : new Date(question.value);
+          const conditionValueLT = isNaN(Date.parse(value))
+            ? parseFloat(value)
+            : new Date(value);
+          return questionValueLT < conditionValueLT;
+        default:
+          return false;
+      }
+    });
+  });
+
+  return {
+    responses: filteredResponses,
+    totalResponses: filteredResponses.length,
+  };
+};
