@@ -6,7 +6,7 @@ const ajv = new Ajv();
 const apiKey =
   "sk_prod_TfMbARhdgues5AuIosvvdAC9WsA5kXiZlW8HZPaRDlIbCpSpLsXBeZO7dCVZQwHAY3P4VSBPiiC33poZ1tdUj2ljOzdTCCOSpUZ_3912";
 
-router.get("/forms", async function (req, res, next) {
+router.get("/forms", async function (req, res) {
   const response = await fetch("https://api.fillout.com/v1/api/forms", {
     method: "GET",
     headers: {
@@ -18,7 +18,7 @@ router.get("/forms", async function (req, res, next) {
   res.json(data);
 });
 
-router.get("/forms/:formId", async function (req, res, next) {
+router.get("/forms/:formId", async function (req, res) {
   const formId = req.params.formId;
   if (!formId) {
     return res.status(400).send("formId is required");
@@ -42,20 +42,15 @@ router.get("/forms/:formId", async function (req, res, next) {
   res.json(data);
 });
 
-router.get("/forms/:formId/submissions", async function (req, res, next) {
+router.get("/forms/:formId/submissions", async function (req, res) {
   const formId = req.params.formId;
   if (!formId) {
     return res.status(400).send("formId is required");
   }
   const filters = req.query;
-  const queryParams = {
-    ...req.query,
-    limit: req.query.limit ? parseInt(req.query.limit) : undefined,
-    offset: req.query.offset ? parseInt(req.query.offset) : undefined,
-  };
 
   const validate = ajv.compile(submission_schema);
-  const valid_schema = validate(queryParams);
+  const valid_schema = validate(filters);
   if (!valid_schema) {
     return res.status(400).send(validate.errors);
   }
@@ -79,45 +74,17 @@ router.get("/forms/:formId/submissions", async function (req, res, next) {
   res.json(data);
 });
 
-router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
+router.get("/forms/:formId/filteredResponses", async function (req, res) {
   const formId = req.params.formId;
+
   if (!formId) {
     return res.status(400).send("formId is required");
   }
+
   const filters = req.query;
-  const filter_schema = {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
-        id: {
-          type: "string",
-        },
-        condition: {
-          type: "string",
-          enum: ["equals", "does_not_equal", "greater_than", "less_than"],
-        },
-        value: {
-          type: ["integer", "string"],
-        },
-      },
-      required: ["id", "condition", "value"],
-    },
-    additionalProperties: false,
-  };
-
   const queryParams = {
-    ...req.query, // Assuming req.query contains the query parameters from the URL
-    limit: req.query.limit ? parseInt(req.query.limit) : undefined,
-    offset: req.query.offset ? parseInt(req.query.offset) : undefined,
+    ...req.query,
   };
-
-  const validate = ajv.compile(submission_schema);
-  const valid_schema = validate(queryParams);
-  if (!valid_schema) {
-    return res.status(400).send(validate.errors);
-  }
-
   const res_filters = filters.responseFilter
     ? JSON.parse(filters.responseFilter)
     : [];
@@ -128,7 +95,22 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
     if (!valid_res_filter) {
       return res.status(400).json(validate_res.errors);
     }
-    delete filters.responseFilter;
+    delete queryParams.responseFilter;
+    delete filters.limit;
+    delete filters.offset;
+  }
+
+  if (queryParams.limit) {
+    queryParams.limit = +queryParams.limit;
+  }
+  if (queryParams.offset) {
+    queryParams.offset = +queryParams.offset;
+  }
+
+  const validate = ajv.compile(submission_schema);
+  const valid_schema = validate(queryParams);
+  if (!valid_schema) {
+    return res.status(400).send(validate.errors);
   }
 
   const response = await fetch(
@@ -148,15 +130,21 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
     return res.status(data.statusCode).json(data);
   }
 
+  // Get pagination parameters from filters
+  const limit = queryParams.limit || data.responses.length;
+  const offset = queryParams.offset || 0;
+
   if (res_filters.length > 0) {
-    data = filterResponses(data, res_filters);
+    // Apply custom filtering and pagination
+    data = filterResponses(data, res_filters, limit, offset);
   }
+
   return res.json(data);
 });
 
 module.exports = router;
 
-const filterResponses = (data, conditions) => {
+const filterResponses = (data, conditions, limit, offset) => {
   // Filter responses based on conditions
   const filteredResponses = data.responses.filter((response) => {
     return conditions.every((cond) => {
@@ -195,9 +183,14 @@ const filterResponses = (data, conditions) => {
     });
   });
 
+  // Apply pagination
+  const pageCount = Math.ceil(filteredResponses.length / limit);
+  const paginatedResponses = filteredResponses.slice(offset, offset + limit);
+
   return {
-    responses: filteredResponses,
-    totalResponses: filteredResponses.length,
+    responses: paginatedResponses,
+    totalResponses: paginatedResponses.length,
+    pageCount: pageCount,
   };
 };
 
@@ -230,4 +223,25 @@ const submission_schema = {
     },
   },
   additionalProperties: true,
+};
+
+const filter_schema = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+      },
+      condition: {
+        type: "string",
+        enum: ["equals", "does_not_equal", "greater_than", "less_than"],
+      },
+      value: {
+        type: ["integer", "string"],
+      },
+    },
+    required: ["id", "condition", "value"],
+  },
+  additionalProperties: false,
 };
