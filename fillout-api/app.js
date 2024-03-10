@@ -16,4 +16,11 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/", indexRouter);
 app.use("/v1/api", filloutRouter);
 
+// Check environment
+if (process.env.NODE_ENV === "production") {
+  console.log("Running in server environment");
+} else {
+  console.log("Running in local environment");
+}
+
 module.exports = app;
