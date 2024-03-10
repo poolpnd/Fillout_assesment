@@ -195,7 +195,7 @@ const filterResponses = (data, conditions, limit, offset) => {
 
   return {
     responses: paginatedResponses,
-    totalResponses: paginatedResponses.length,
+    totalResponses: filteredResponses.length,
     pageCount: pageCount,
   };
 };
