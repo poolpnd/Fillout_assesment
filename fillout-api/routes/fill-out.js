@@ -34,7 +34,22 @@ router.get("/forms/:formId", async function (req, res, next) {
 
 router.get("/forms/:formId/submissions", async function (req, res, next) {
   const formId = req.params.formId;
+  if (!formId) {
+    return res.status(400).send("formId is required");
+  }
   const filters = req.query;
+  const queryParams = {
+    ...req.query,
+    limit: req.query.limit ? parseInt(req.query.limit) : undefined,
+    offset: req.query.offset ? parseInt(req.query.offset) : undefined,
+  };
+
+  const validate = ajv.compile(submission_schema);
+  const valid_schema = validate(queryParams);
+  if (!valid_schema) {
+    return res.status(400).send(validate.errors);
+  }
+
   const response = await fetch(
     `https://api.fillout.com/v1/api/forms/${formId}/submissions?${new URLSearchParams(
       filters
@@ -56,37 +71,6 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
     return res.status(400).send("formId is required");
   }
   const filters = req.query;
-  const schema = {
-    properties: {
-      limit: {
-        type: "integer",
-        minimum: 1,
-        maximum: 150,
-      },
-      afterDate: {
-        type: "string",
-      },
-      beforeDate: {
-        type: "string",
-      },
-      offset: {
-        type: "integer",
-        minimum: 0,
-      },
-      status: {
-        type: "string",
-        enum: ["in_progress", "finished"],
-      },
-      includeEditLink: {
-        type: "boolean",
-      },
-      sort: {
-        enum: ["asc", "desc"],
-      },
-    },
-    additionalProperties: true,
-  };
-
   const filter_schema = {
     type: "array",
     items: {
@@ -114,7 +98,7 @@ router.get("/forms/:formId/filteredResponses", async function (req, res, next) {
     offset: req.query.offset ? parseInt(req.query.offset) : undefined,
   };
 
-  const validate = ajv.compile(schema);
+  const validate = ajv.compile(submission_schema);
   const valid_schema = validate(queryParams);
   if (!valid_schema) {
     return res.status(400).send(validate.errors);
@@ -201,4 +185,35 @@ const filterResponses = (data, conditions) => {
     responses: filteredResponses,
     totalResponses: filteredResponses.length,
   };
+};
+
+const submission_schema = {
+  properties: {
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 150,
+    },
+    afterDate: {
+      type: "string",
+    },
+    beforeDate: {
+      type: "string",
+    },
+    offset: {
+      type: "integer",
+      minimum: 0,
+    },
+    status: {
+      type: "string",
+      enum: ["in_progress", "finished"],
+    },
+    includeEditLink: {
+      type: "boolean",
+    },
+    sort: {
+      enum: ["asc", "desc"],
+    },
+  },
+  additionalProperties: true,
 };
